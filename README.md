@@ -20,7 +20,7 @@ IoT Cloud Integration: Pushes live decibel values, system status, and raw sensor
 
 Zero-Lag Asynchronous Timing: Utilizes BlynkTimer instead of blocking delay() loops, guaranteeing a responsive local UI and smooth data streaming.
 
-🔌 Hardware Wiring & Pin Mapping
+ Hardware Wiring & Pin Mapping
 
 Component
 
@@ -117,8 +117,8 @@ Cathode (-)
 GND (via $220\Omega$)
 
 Common Ground
-
-🛠️ Software Prerequisites & Libraries
+ 
+  Software Prerequisites & Libraries
 
 To compile and upload this project, make sure you have installed the following libraries in your Arduino IDE:
 
@@ -126,7 +126,7 @@ Blynk (by Volodymyr Shymanskyy)
 
 hd44780 (by Bill Perry) - Used for optimized and auto-detected I2C LCD control.
 
-💻 Source Code
+ Source Code
 
 Below is the stable, noise-calibrated, and production-ready C++ firmware for the ESP32:
 
