@@ -1,338 +1,308 @@
-# IoT-Smart-Noise-Monitor-ESP32-KY-037-Blynk-
-An IoT-based real-time Environmental Noise Monitoring System built using an ESP32 NodeMCU, a KY-037 Sound Sensor, an I2C 16x2 LCD Display, and the Blynk IoT Cloud.
- IoT Smart Noise Monitor (ESP32 + KY-037 + Blynk)
+#  IoT Smart Noise Pollution Monitor
 
-An IoT-based real-time Environmental Noise Monitoring System built using an ESP32 NodeMCU, a KY-037 Sound Sensor, an I2C 16x2 LCD Display, and the Blynk IoT Cloud. This system continuously tracks ambient noise decibel levels, categorizes them into different safety zones, triggers local visual alerts, and logs the historical data to the cloud via Wi-Fi.
+### ESP32 + KY-037 + Blynk IoT Cloud
 
-Key Features
+An advanced **IoT-based real-time Environmental Noise Monitoring System** built using an **ESP32 NodeMCU**, **KY-037 High-Sensitivity Sound Sensor**, **I2C 16x2 LCD Display**, and **Blynk IoT Cloud**.
 
-Real-time Calibrated Measurement: Dynamically reads analog acoustic waves and converts raw signals into real-time decibels ($30\text{ dB} - 120\text{ dB}$).
+This system continuously monitors ambient noise intensity, converts acoustic signals into calibrated decibel values, classifies noise levels into safety zones, provides local visual warnings, and streams live telemetry data to the cloud through Wi-Fi.
 
-Signal Inversion Handling: Includes customized software logic to calibrate inverted analog outputs typical of the KY-037 sensor.
+---
 
-Local Visual Feedback:
+#  Features
 
-Displays current decibels and environment status (SAFE, MODERATE, LOUD, or DANGER) on an I2C 16x2 LCD.
+##  Real-Time Noise Measurement
 
-Dynamically controls a multi-tier LED alert system (Green, Yellow, Red) based on noise thresholds.
+* Reads analog acoustic signals from the KY-037 sensor using the ESP32's **12-bit ADC (0–4095)**.
+* Converts processed sensor values into estimated noise levels:
 
-IoT Cloud Integration: Pushes live decibel values, system status, and raw sensor wave variations directly to the Blynk IoT mobile/web dashboard.
+```
+30 dB - 120 dB
+```
 
-Zero-Lag Asynchronous Timing: Utilizes BlynkTimer instead of blocking delay() loops, guaranteeing a responsive local UI and smooth data streaming.
+* Uses averaging and calibration algorithms for stable readings.
 
- Hardware Wiring & Pin Mapping
+---
 
-Component
+##  Signal Inversion & Calibration
 
-Pin on Component
+The KY-037 analog output produces an inverted signal response. The firmware applies mathematical correction:
 
-Pin on ESP32
+### Acoustic Signal Inversion
 
-Description
+[
+\text{Inverted Raw} = 4095.0 - \text{Average}
+]
 
-KY-037 Sensor
+### Linear Decibel Calibration
 
-A0 (Analog Out)
-
-GPIO 34
-
-Noise Analog Signal Input
-
-
-
-GND
-
-GND
-
-Common Ground
-
-
-
-VCC
-
-3.3V / Vin
-
-Power Input
-
-I2C 16x2 LCD
-
-SDA
-
-GPIO 21
-
-I2C Data Line
-
-
-
-SCL
-
-GPIO 22
-
-I2C Clock Line
-
-
-
-VCC
-
-5V / Vin
-
-Backlight Power
-
-
-
-GND
-
-GND
-
-Common Ground
-
-LED Green
-
-Anode (+)
-
-GPIO 25
-
-Safe Indicator
-
-LED Yellow
-
-Anode (+)
-
-GPIO 26
-
-Moderate/Loud Indicator
-
-LED Red
-
-Anode (+)
-
-GPIO 23
-
-Danger Indicator
-
-All LEDs
-
-Cathode (-)
-
-GND (via $220\Omega$)
-
-Common Ground
- 
-  Software Prerequisites & Libraries
-
-To compile and upload this project, make sure you have installed the following libraries in your Arduino IDE:
-
-Blynk (by Volodymyr Shymanskyy)
-
-hd44780 (by Bill Perry) - Used for optimized and auto-detected I2C LCD control.
-
- Source Code
-
-Below is the stable, noise-calibrated, and production-ready C++ firmware for the ESP32:
-
-/* 
-  =====================================================
-  IoT Noise Pollution Monitor (ESP32 + KY-037)
-  =====================================================
-*/
-
-#define BLYNK_TEMPLATE_ID "TMPL66xaYRT1D"
-#define BLYNK_TEMPLATE_NAME "NoisePollutionMonitoring"
-#define BLYNK_AUTH_TOKEN "42XOLcEQSgy1NmOtiLRDbmDQniUa4I_w"
-
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <BlynkSimpleEsp32.h>
-#include <Wire.h>
-
-#include <hd44780.h>
-#include <hd44780ioClass/hd44780_I2Cexp.h>
-
-char ssid[] = "4G-MIFI-F065";
-char pass[] = "20020526As";
-
-hd44780_I2Cexp lcd;
-
-const int LCD_COLS = 16;
-const int LCD_ROWS = 2;
-
-#define SOUND_ANALOG_PIN 34
-
-#define LED_GREEN 25
-#define LED_YELLOW 26
-#define LED_RED 23 // Re-routed to GPIO 23
-
-#define DB_MIN 30
-#define DB_MAX 120
-
-BlynkTimer timer;
-
-//--------------------------------------------------
-// Read and Process Noise Level
-//--------------------------------------------------
-float getDecibels()
-{
-    const int samples = 200;
-    long total = 0;
-
-    for (int i = 0; i < samples; i++)
-    {
-        total += analogRead(SOUND_ANALOG_PIN);
-        delayMicroseconds(100);
-    }
-
-    float average = total / (float)samples;
-
-    // KY-037 analog output is inverted relative to raw sound intensity
-    float raw = 4095.0 - average;
-
-    // Hardware Calibration Math mapping values into precise decibels
-    float db = ((raw - 500.0) * (DB_MAX - DB_MIN) / (3500.0 - 500.0)) + DB_MIN;
-    db = constrain(db, DB_MIN, DB_MAX);
-
-    return db;
+[
+dB =
+\left(
+\frac{
+(\text{Inverted Raw}-500.0)
+\times
+(DB_{MAX}-DB_{MIN})
 }
+{3500.0-500.0}
+\right)
 
-//--------------------------------------------------
-// Map dB to Human Readable Status
-//--------------------------------------------------
-String getStatus(float db)
-{
-    if (db < 35)      return "SAFE";
-    if (db < 45)      return "MODERATE";
-    if (db < 55)      return "LOUD";
-    return "DANGER";
-}
+* DB_{MIN}
+  ]
 
-//--------------------------------------------------
-// Control Warning LEDs
-//--------------------------------------------------
-void updateLEDs(float db)
-{
-    if (db < 35)
-    {
-        digitalWrite(LED_GREEN, HIGH);
-        digitalWrite(LED_YELLOW, LOW);
-        digitalWrite(LED_RED, LOW);
-    }
-    else if (db < 55)
-    {
-        digitalWrite(LED_GREEN, LOW);
-        digitalWrite(LED_YELLOW, HIGH);
-        digitalWrite(LED_RED, LOW);
-    }
-    else
-    {
-        digitalWrite(LED_GREEN, LOW);
-        digitalWrite(LED_YELLOW, LOW);
-        digitalWrite(LED_RED, HIGH);
-    }
-}
+Where:
 
-//--------------------------------------------------
-// Write Output to I2C LCD
-//--------------------------------------------------
-void updateLCD(float db, String status)
-{
-    lcd.setCursor(0, 0);
-    lcd.print("Noise:");
+```
+DB_MIN = 30 dB
+DB_MAX = 120 dB
+```
 
-    if ((int)db < 10)
-        lcd.print("  ");
-    else if ((int)db < 100)
-        lcd.print(" ");
+The final output is constrained within the calibrated range.
 
-    lcd.print((int)db);
-    lcd.print(" dB   ");
+---
 
-    lcd.setCursor(0, 1);
-    lcd.print("Status:");
-    lcd.print("        ");
-    lcd.setCursor(7, 1);
-    lcd.print(status);
-}
+#  Noise Classification System
 
-//--------------------------------------------------
-// Core Logic Loop Execution
-//--------------------------------------------------
-void measureAndSend()
-{
-    float db = getDecibels();
-    String status = getStatus(db);
+| Noise Level | Status          | Indicator     |
+| ----------- | --------------- | ------------- |
+| < 35 dB     | SAFE            | 🟢 Green LED  |
+| 35–54 dB    | MODERATE / LOUD | 🟡 Yellow LED |
+| ≥ 55 dB     | DANGER          | 🔴 Red LED    |
 
-    updateLEDs(db);
-    updateLCD(db, status);
+---
 
-    // Streams mapped signals to Blynk Virtual Pins
-    Blynk.virtualWrite(V0, (int)db);
-    Blynk.virtualWrite(V1, status);
+#  Local Display System
 
-    Serial.print("Noise : ");
-    Serial.print(db);
-    Serial.print(" dB  |  ");
-    Serial.println(status);
-}
+The system displays:
 
-//--------------------------------------------------
-// System Init and Setup
-//--------------------------------------------------
-void setup()
-{
-    Serial.begin(115200);
+```
+Noise: XX dB
+Status: SAFE
+```
 
-    pinMode(LED_GREEN, OUTPUT);
-    pinMode(LED_YELLOW, OUTPUT);
-    pinMode(LED_RED, OUTPUT);
+on an **I2C 16x2 LCD display**.
 
-    analogReadResolution(12);
-    analogSetPinAttenuation(SOUND_ANALOG_PIN, ADC_11db);
+---
 
-    int status = lcd.begin(LCD_COLS, LCD_ROWS);
-    if (status)
-    {
-        Serial.print("LCD Error : ");
-        Serial.println(status);
-    }
+#  IoT Cloud Monitoring
 
-    lcd.backlight();
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Noise Monitor");
-    lcd.setCursor(0, 1);
-    lcd.print("Connecting...");
-    
-    WiFi.begin(ssid, pass);
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.print(".");
-    }
+The project uses **Blynk IoT Cloud** for remote monitoring.
 
-    Serial.println("\nWiFi Connected");
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("WiFi Connected");
-    delay(1500);
-    lcd.clear();
+Features:
 
-    Blynk.config(BLYNK_AUTH_TOKEN);
-    if (!Blynk.connect())
-    {
-        Serial.println("Blynk Connection Failed!");
-    }
-    else
-    {
-        Serial.println("Blynk Connected");
-    }
+* Real-time decibel monitoring.
+* Status monitoring.
+* Wireless data transmission through Wi-Fi.
 
-    timer.setInterval(1000L, measureAndSend);
-}
+### Blynk Virtual Pins
 
-//--------------------------------------------------
-// Standard Asynchronous Execution
-//--------------------------------------------------
-void loop()
-{
-    Blynk.run();
-    timer.run();
-}
+| Virtual Pin | Data Type | Description      |
+| ----------- | --------- | ---------------- |
+| V0          | Integer   | Noise Level (dB) |
+| V1          | String    | Safety Status    |
+
+---
+
+#  System Architecture
+
+```mermaid
+graph TD
+
+A[Ambient Noise]
+A -->|Sound Waves| B(KY-037 Sensor)
+
+B -->|Analog Signal GPIO 34| C{ESP32 MCU}
+
+C --> D[Signal Processing & Calibration]
+
+D -->|I2C SDA/SCL| E[I2C 16x2 LCD]
+
+D -->|GPIO Output| F[RGB Warning LEDs]
+
+D -->|Wi-Fi| G[Blynk IoT Cloud]
+
+F --> H[SAFE]
+F --> I[MODERATE / LOUD]
+F --> J[DANGER]
+```
+
+---
+
+#  Hardware Wiring
+
+| Component  | Component Pin | ESP32 Pin                 | Description        |
+| ---------- | ------------- | ------------------------- | ------------------ |
+| KY-037     | A0 Analog Out | GPIO 34                   | Sound Signal Input |
+| KY-037     | VCC           | 3.3V / VIN                | Power              |
+| KY-037     | GND           | GND                       | Ground             |
+| LCD I2C    | SDA           | GPIO 21                   | I2C Data           |
+| LCD I2C    | SCL           | GPIO 22                   | I2C Clock          |
+| LCD I2C    | VCC           | 5V / VIN                  | Power              |
+| LCD I2C    | GND           | GND                       | Ground             |
+| Green LED  | Anode (+)     | GPIO 25                   | Safe Indicator     |
+| Yellow LED | Anode (+)     | GPIO 26                   | Warning Indicator  |
+| Red LED    | Anode (+)     | GPIO 27                   | Danger Indicator   |
+| LEDs       | Cathode (-)   | GND through 220Ω resistor | Current Limiting   |
+
+---
+
+#  Required Hardware
+
+* ESP32 NodeMCU Development Board
+* KY-037 High Sensitivity Sound Sensor
+* 16x2 I2C LCD Display
+* Green LED
+* Yellow LED
+* Red LED
+* 220Ω resistors
+* Breadboard
+* Jumper wires
+* Wi-Fi connection
+
+---
+
+#  Software Requirements
+
+## Arduino IDE Libraries
+
+Install the following libraries:
+
+### Required Libraries
+
+* **Blynk**
+* **hd44780 by Bill Perry**
+* ESP32 Board Package
+
+---
+
+#  Installation Guide
+
+## 1. Clone Repository
+
+```bash
+git clone https://github.com/yourusername/IoT-Noise-Pollution-Monitor.git
+```
+
+---
+
+## 2. Configure Wi-Fi
+
+Open the Arduino sketch and update:
+
+```cpp
+char ssid[] = "YOUR_WIFI_NAME";
+char pass[] = "YOUR_WIFI_PASSWORD";
+```
+
+---
+
+## 3. Configure Blynk
+
+Create a Blynk template and update:
+
+```cpp
+#define BLYNK_TEMPLATE_ID "YOUR_TEMPLATE_ID"
+#define BLYNK_TEMPLATE_NAME "YOUR_TEMPLATE_NAME"
+#define BLYNK_AUTH_TOKEN "YOUR_AUTH_TOKEN"
+```
+
+---
+
+## 4. Upload Firmware
+
+1. Connect ESP32 through USB.
+2. Select the correct ESP32 board.
+3. Select the correct COM port.
+4. Upload the program.
+
+---
+
+# ⏱️ Performance Design
+
+The project uses:
+
+### BlynkTimer
+
+Instead of blocking delays:
+
+```cpp
+delay()
+```
+
+the system uses:
+
+```cpp
+BlynkTimer
+```
+
+Benefits:
+
+* Faster response time.
+* Smooth LCD updates.
+* Reliable cloud communication.
+* Non-blocking operation.
+
+---
+
+#  Project Structure
+
+```
+IoT-Noise-Pollution-Monitor/
+
+│
+├── NoiseMonitor.ino
+├── README.md
+│
+└── images/
+    ├── circuit.jpg
+    ├── lcd_display.jpg
+    └── blynk_dashboard.jpg
+```
+
+---
+
+#  Important Note
+
+The KY-037 is a low-cost sound detection module. The displayed decibel values are **calibrated estimates**, not laboratory-grade SPL measurements.
+
+For professional sound level measurement, consider:
+
+* MAX9814 microphone amplifier
+* MAX4466 microphone module
+* INMP441 I2S MEMS microphone
+
+---
+
+#  Contributors
+
+Developed collaboratively as a hands-on embedded IoT engineering project.
+
+### Team Members
+
+**Amila Keranda**
+
+* Lead Firmware Development
+* Signal Calibration
+* ESP32 Programming
+
+**Partner**
+
+* Circuit Integration
+* Hardware Testing
+* Quality Assurance
+
+---
+
+#  Contribution
+
+Contributions are welcome!
+
+You can:
+
+* Report bugs.
+* Suggest improvements.
+* Submit pull requests.
+* Improve calibration algorithms.
+
+---
+
+ If you find this project useful, consider giving it a star!
